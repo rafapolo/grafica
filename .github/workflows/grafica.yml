@@ -1,0 +1,60 @@
+name: Rewrite Contribution Graph Art
+
+on:
+  schedule:
+    # Every Saturday at 20:00 UTC.
+    # Running on Saturday ensures Mon–Fri of the current week are already
+    # in the past, so the last column of the art (col 52) is fully visible.
+    - cron: '0 20 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "art-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Rewrite history with EXTRAPOLO art
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Stash the files we need before wiping git history.
+          cp grafita.sh /tmp/grafita.sh
+          cp -r .github /tmp/dot-github
+
+          # Create a brand-new orphan branch (no parent commits).
+          git checkout --orphan art
+          git rm -rf . --quiet
+          git clean -fdx --quiet
+
+          # Restore the script and workflow so they live in the repo.
+          cp /tmp/grafita.sh ./grafita.sh
+          mkdir -p .github/workflows
+          cp /tmp/dot-github/workflows/grafica.yml .github/workflows/grafica.yml
+
+          # Base commit at an ancient date so it never appears in the
+          # 365-day contribution window.
+          git add grafita.sh .github
+          GIT_AUTHOR_DATE="2000-01-01T00:00:00" \
+          GIT_COMMITTER_DATE="2000-01-01T00:00:00" \
+            git commit -q -m "setup"
+
+          # Generate all pixel-art commits.
+          bash grafita.sh
+
+          # Authenticate and force-push the fresh history to main.
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git push --force origin art:main
